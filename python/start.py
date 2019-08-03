@@ -4,11 +4,13 @@ import traceback
 import pymongo
 client = None
 import json
-interarc_db = None
-interarc_results = None
+_db = None
+_results = None
+import requests
 from flask import Flask, render_template_string, request, jsonify, render_template
 app = Flask(__name__, static_url_path='/static')
 
+headers = {'Content-Type': 'application/json'}
 __author__ = 'raviranjan'
 
 @app.route('/')
@@ -17,39 +19,35 @@ def index():
     #return render_template('index.html')
     return render_template_string('''
          <title>Ravi Ranjan</title>
-         <h2>You are accessing domain over https </h2>
-         <p>Secure site creation inprogress </p>
-        <p> Kindly use http  <a href="http://www.ranjanravi.com"> www.ranjanravi.com</a></p>
+         <h2>HI Ravi</h2>
          ''')
 
-if __name__ == "__main__":
-    if 'SERVER_PORT' in os.environ:
-        server_port = int(os.environ['SERVER_PORT'])
-    else:
-        server_port = 443
-    app.run('0.0.0.0', port=server_port, ssl_context='adhoc', debug=True)
 
-    if 'DB_PORT' in os.environ:
-        db_port = int(os.environ['DB_PORT'])
-    else:
-        db_port = 8082
-    client = MongoClient('10.198.10.70:%s' % db_port)
-    # creating connections for communicating with Mongo DB
-    interarc_db = client['EmployeeData']
-    interarc_results = interarc_db['results']
-
-
-#@app.route('/main')
+@app.route('/main')
 def main():
-    _id = insert('339591', 'Ravi Ranjan', '28', 'india')
-    print _id
-    get()
-    update('339591', 'Ravi Ranjan', '29', 'india')
+    data = {
+          "emp_id": "339591",
+          "name": "Ravi Ranjan",
+          "age": "28",
+          "counrty": "india"
+        }
+    resp = requests.post('http://0.0.0.0/insert', data=data, headers=headers,
+                         verify=False)
+    # print resp.json()
+    resp = requests.get('http://0.0.0.0/read/339591', headers=headers,
+                         verify=False)
+    return render_template_string('''
+             <title>Ravi Ranjan</title>
+             <h2>data added</h2>
+             ''')
+    # print resp.json()
+    # update('339591', 'Ravi Ranjan', '29', 'india')
     # delete('339591')
 
 
 @app.route('/insert', methods=['POST'])
 def insert():
+    app.logger.debug('insert method called')
     content_type = request.headers.get('Content-Type')
     app.logger.debug('Content-Type %s', content_type)
     data = {}
@@ -60,7 +58,7 @@ def insert():
     app.logger.debug('POST emp data: %s' % data)
     mongo_id = None
     try:
-        insert = interarc_results.insert_one(data)
+        insert = _results.insert_one(data)
         mongo_id = str(insert.inserted_id)
     except (pymongo.errors.AutoReconnect,
             pymongo.errors.NotMasterError,
@@ -69,16 +67,14 @@ def insert():
             pymongo.errors.NetworkTimeout,
             pymongo.errors.ServerSelectionTimeoutError) as ex:
         log_exception(ex)
-    return json.dumps({'id': mongo_id})
+    return json.dumps({'_id': mongo_id})
 
 
-@app.route('/read')
+@app.route('/read/<emp_id>', methods=['GET'])
 def get(emp_id):
     app.logger.debug('GET emp_id: %s' % emp_id)
     try:
-        values = cursor.Cursor(interarc_results, {'emp_id':
-                                                      emp_id}, limit=5) \
-            .sort('interopTestDate', pymongo.DESCENDING)
+        values = cursor.Cursor(_results, {'emp_id': emp_id}, limit=5)
     except:
         return not_found()
     data = list()
@@ -93,7 +89,7 @@ def get(emp_id):
 def update(criteria, name, age, country):
     # Function to update record to mongo db
     try:
-        interarc_db.Employees.update_one(
+        _db.Employees.update_one(
             {"id": criteria},
             {
                 "$set": {
@@ -112,7 +108,7 @@ def update(criteria, name, age, country):
 def delete(criteria):
     # Function to delete record from mongo db
     try:
-        interarc_db.Employees.delete_many({"id":criteria})
+        _db.Employees.delete_many({"id":criteria})
         print '\nDeletion successful\n'
     except Exception, e:
         print str(e)
@@ -132,3 +128,23 @@ def not_found(error=None):
     response = jsonify(message)
     response.status_code = 404
     return response
+
+
+if __name__ == "__main__":
+    # if SERVER_PORT, DB_PORT is not passed then default DB will run.
+    if 'DB_PORT' in os.environ:
+        db_port = int(os.environ['DB_PORT'])
+    else:
+        db_port = 27017
+
+    if 'SERVER_PORT' in os.environ:
+        server_port = int(os.environ['SERVER_PORT'])
+    else:
+        server_port = 80
+    app.logger.debug("DB_PORT: %s | SERVER_PORT: %s" % (db_port, server_port))
+    client = MongoClient('localhost:%s' % db_port)
+    # creating connections for communicating with Mongo DB
+    _db = client['EmployeeData']
+    _results = _db['results']
+    app.run('0.0.0.0', port=server_port, debug=True)
+    # app.run('0.0.0.0', port=server_port, ssl_context='adhoc', debug=True)
