@@ -1,2 +1,2 @@
-# rvirjn.github.io
-#ranjanravi.com
+# kindly visit https://ranjanravi.com
+https://ranjanravi.com
